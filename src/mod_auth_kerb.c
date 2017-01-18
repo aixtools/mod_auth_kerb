@@ -40,9 +40,8 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- */
-
 #ident "$Id: mod_auth_kerb.c,v 1.150 2008/12/04 10:14:03 baalberith Exp $"
+ */
 
 #include "config.h"
 
@@ -50,7 +49,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define MODAUTHKERB_VERSION "5.4"
+#define MODAUTHKERB_VERSION "5.4.1"
 
 #define MECH_NEGOTIATE "Negotiate"
 #define SERVICE_NAME "HTTP"
@@ -146,6 +145,15 @@ module auth_kerb_module;
 #define MK_AUTH_TYPE r->connection->ap_auth_type
 #define PROXYREQ_PROXY STD_PROXY
 #endif
+
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20100606
+/*
+ * HTTPD-2.4 changed the name of a struct member
+ */
+#define HTTPD24
+#define remote_ip client_ip
+#endif
+
 
 /*************************************************************************** 
  Auth Configuration Structure
@@ -347,6 +355,25 @@ krb5_save_realms(cmd_parms *cmd, void *vsec, const char *arg)
    return NULL;
 }
 
+/*
+ * Note
+ *     ap_log_rerror is implemented as a macro 
+ *     Use APLOG_MARK to fill out file, line, and module_index 
+ *
+ * #define APLOG_MARK   __FILE__,__LINE__,APLOG_MODULE_INDEX
+ * 
+ * APLOG_MARK is a convenience macro for use as the first three parameters
+ * in ap_log_error() and related functions, i.e. file, line, and module_index.
+ * 
+ * The module_index parameter was introduced in version 2.3.6. Before that
+ * version, APLOG_MARK only replaced the file and line parameters. This means
+ * that APLOG_MARK can be used with ap_log_*error in all versions
+ * of Apache httpd.
+ * 
+ * While the ap_log_rerror() macro is updated, the internal call
+ * continues to 'ignore' the module_index value
+ * TBD: update all internal calls with a module_index
+ */
 static void
 log_rerror(const char *file, int line, int level, int status,
            const request_rec *r, const char *fmt, ...)
@@ -358,11 +385,10 @@ log_rerror(const char *file, int line, int level, int status,
    vsnprintf(errstr, sizeof(errstr), fmt, ap);
    va_end(ap);
 
-   
 #ifdef STANDARD20_MODULE_STUFF
-   ap_log_rerror(file, line, level | APLOG_NOERRNO, status, r, "%s", errstr);
+   ap_log_rerror(APLOG_MARK, (level | APLOG_NOERRNO), status, r, "%s", errstr);
 #else
-   ap_log_rerror(file, line, level | APLOG_NOERRNO, r, "%s", errstr);
+   ap_log_rerror(APLOG_MARK, (level | APLOG_NOERRNO), r, "%s", errstr);
 #endif
 }
 
@@ -1708,8 +1734,8 @@ kerb_authenticate_user(request_rec *r)
        prevauth->mech = apr_pstrdup(r->connection->pool, auth_type);
        prevauth->last_return = ret;
        snprintf(keyname, sizeof(keyname) - 1,
-           "mod_auth_kerb::connection::%s::%ld", 
-	   r->connection->remote_ip, r->connection->id);
+	    "mod_auth_kerb::connection::%s::%ld", 
+	    r->connection->remote_ip, r->connection->id);
        apr_pool_userdata_set(prevauth, keyname, NULL, r->connection->pool);
    }
 
